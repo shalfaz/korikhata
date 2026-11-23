@@ -71,7 +71,10 @@ export async function GET(req: NextRequest) {
 
     if (auth.ctx.role === "EMPLOYEE") {
       filter.createdBy = new Types.ObjectId(auth.ctx.userId);
-    } else if (auth.ctx.role === "BRANCH_MANAGER") {
+    } else if (
+      auth.ctx.role === "BRANCH_MANAGER" ||
+      auth.ctx.role === "BRANCH_ADMIN"
+    ) {
       if (auth.ctx.branchId) {
         filter.branchId = new Types.ObjectId(auth.ctx.branchId);
       } else {

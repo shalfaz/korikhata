@@ -77,8 +77,11 @@ export async function POST(
       );
     }
 
-    // Branch isolation for Branch Managers
-    if (auth.ctx.role === "BRANCH_MANAGER") {
+    // Branch isolation for Branch Managers & Branch Admins
+    if (
+      auth.ctx.role === "BRANCH_MANAGER" ||
+      auth.ctx.role === "BRANCH_ADMIN"
+    ) {
       if (
         !auth.ctx.branchId ||
         transaction.branchId?.toString() !== auth.ctx.branchId
@@ -90,19 +93,20 @@ export async function POST(
       }
       if (transaction.approvalStatus !== "PENDING_MANAGER") {
         return NextResponse.json(
-          { error: "This entry is no longer waiting for Branch Manager approval." },
+          { error: "This entry is no longer waiting for branch-level approval." },
           { status: 400 }
         );
       }
     }
 
-    // Tier enforcement for HQ Admin Officer
+    // Tier enforcement for HQ Admin
     if (
-      auth.ctx.role === "HQ_ADMIN_OFFICER" &&
-      transaction.approvalStatus !== "PENDING_HQ"
+      auth.ctx.role === "HQ_ADMIN" &&
+      transaction.approvalStatus !== "PENDING_HQ" &&
+      transaction.approvalStatus !== "PENDING_FINAL"
     ) {
       return NextResponse.json(
-        { error: "This entry is not currently at the HQ Audit tier." },
+        { error: "This entry is not currently at the HQ or Final Approval tier." },
         { status: 400 }
       );
     }

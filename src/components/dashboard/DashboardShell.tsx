@@ -81,7 +81,8 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
       icon: LayoutDashboard,
       roles: [
         "COMPANY_SUPER_ADMIN",
-        "HQ_ADMIN_OFFICER",
+        "HQ_ADMIN",
+        "BRANCH_ADMIN",
         "BRANCH_MANAGER",
         "EMPLOYEE",
       ],
@@ -90,7 +91,12 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
       href: "/approvals",
       label: "Approvals",
       icon: CheckSquare,
-      roles: ["COMPANY_SUPER_ADMIN", "HQ_ADMIN_OFFICER", "BRANCH_MANAGER"],
+      roles: [
+        "COMPANY_SUPER_ADMIN",
+        "HQ_ADMIN",
+        "BRANCH_ADMIN",
+        "BRANCH_MANAGER",
+      ],
       badge: pendingBadge,
     },
     {
@@ -99,7 +105,8 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
       icon: BookOpen,
       roles: [
         "COMPANY_SUPER_ADMIN",
-        "HQ_ADMIN_OFFICER",
+        "HQ_ADMIN",
+        "BRANCH_ADMIN",
         "BRANCH_MANAGER",
         "EMPLOYEE",
       ],
@@ -108,25 +115,35 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
       href: "/dues",
       label: "Dues & Credits",
       icon: Users,
-      roles: ["COMPANY_SUPER_ADMIN", "HQ_ADMIN_OFFICER", "BRANCH_MANAGER"],
+      roles: [
+        "COMPANY_SUPER_ADMIN",
+        "HQ_ADMIN",
+        "BRANCH_ADMIN",
+        "BRANCH_MANAGER",
+      ],
     },
     {
       href: "/reports",
       label: "Reports",
       icon: BarChart3,
-      roles: ["COMPANY_SUPER_ADMIN", "HQ_ADMIN_OFFICER", "BRANCH_MANAGER"],
+      roles: [
+        "COMPANY_SUPER_ADMIN",
+        "HQ_ADMIN",
+        "BRANCH_ADMIN",
+        "BRANCH_MANAGER",
+      ],
     },
     {
       href: "/team",
       label: "Branches & Team",
       icon: GitBranch,
-      roles: ["COMPANY_SUPER_ADMIN", "HQ_ADMIN_OFFICER", "BRANCH_MANAGER"],
+      roles: ["COMPANY_SUPER_ADMIN", "HQ_ADMIN", "BRANCH_ADMIN"],
     },
     {
       href: "/settings",
       label: "Settings",
       icon: Settings,
-      roles: ["COMPANY_SUPER_ADMIN", "HQ_ADMIN_OFFICER"],
+      roles: ["COMPANY_SUPER_ADMIN", "HQ_ADMIN"],
     },
   ];
   const navItems = allNavItems.filter((item) => item.roles.includes(role));

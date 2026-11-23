@@ -6,6 +6,7 @@ import {
   Building2,
   GitBranch,
   Loader2,
+  Pencil,
   Plus,
   UserPlus,
   Users,
@@ -33,40 +34,47 @@ interface MemberRow {
   role: CompanyRole;
   branch: { id: string; name: string; code: string } | null;
   isActive: boolean;
+  canManage: boolean;
 }
 
 export default function BranchesAndTeamPage() {
   const { data: session } = useSession();
   const role = session?.user?.role || "EMPLOYEE";
   const isSuperAdmin = role === "COMPANY_SUPER_ADMIN";
-  const isBranchManager = role === "BRANCH_MANAGER";
-  const canProvisionStaff = isSuperAdmin || isBranchManager;
+  const isBranchAdmin = role === "BRANCH_ADMIN";
 
   const [branches, setBranches] = useState<BranchRow[]>([]);
   const [members, setMembers] = useState<MemberRow[]>([]);
+  const [manageableRoles, setManageableRoles] = useState<CompanyRole[]>([]);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Branch Modal
+  // Create Branch Modal (Super Admin only)
   const [branchModalOpen, setBranchModalOpen] = useState(false);
   const [branchName, setBranchName] = useState("");
   const [branchCode, setBranchCode] = useState("");
   const [branchAddress, setBranchAddress] = useState("");
   const [savingBranch, setSavingBranch] = useState(false);
 
-  // Member Modal
+  // Provision User Modal
   const [memberModalOpen, setMemberModalOpen] = useState(false);
   const [memberName, setMemberName] = useState("");
   const [memberEmail, setMemberEmail] = useState("");
   const [memberCode, setMemberCode] = useState("");
   const [memberPhone, setMemberPhone] = useState("");
-  const [memberRole, setMemberRole] = useState<CompanyRole>(
-    isBranchManager ? "EMPLOYEE" : "BRANCH_MANAGER"
-  );
+  const [memberRole, setMemberRole] = useState<CompanyRole>("EMPLOYEE");
   const [memberBranchId, setMemberBranchId] = useState("");
   const [memberPassword, setMemberPassword] = useState("");
   const [savingMember, setSavingMember] = useState(false);
+
+  // Edit Subordinate Modal (Role / Branch)
+  const [editingMember, setEditingMember] = useState<MemberRow | null>(null);
+  const [editRole, setEditRole] = useState<CompanyRole>("EMPLOYEE");
+  const [editBranchId, setEditBranchId] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  const canProvisionStaff = manageableRoles.length > 0;
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -85,6 +93,16 @@ export default function BranchesAndTeamPage() {
       if (tRes.ok) {
         const tJson = await tRes.json();
         setMembers(tJson.members || []);
+        const rolesList: CompanyRole[] = tJson.manageableRoles || [];
+        setManageableRoles(rolesList);
+        if (rolesList.length > 0) {
+          setMemberRole((prev) =>
+            rolesList.includes(prev) ? prev : rolesList[0]
+          );
+        }
+      } else {
+        const tErr = await tRes.json().catch(() => ({}));
+        setError(tErr.error || "You do not have permission to view team management.");
       }
     } finally {
       setLoading(false);
@@ -131,9 +149,6 @@ export default function BranchesAndTeamPage() {
     setError(null);
     setNotice(null);
     try {
-      const effectiveRole: CompanyRole = isBranchManager
-        ? "EMPLOYEE"
-        : memberRole;
       const res = await fetch("/api/team", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -142,11 +157,12 @@ export default function BranchesAndTeamPage() {
           email: memberEmail.trim().toLowerCase(),
           employeeCode: memberCode.trim().toUpperCase(),
           phone: memberPhone.trim() || undefined,
-          role: effectiveRole,
+          role: memberRole,
           branchId:
-            effectiveRole === "HQ_ADMIN_OFFICER" ||
-            effectiveRole === "COMPANY_SUPER_ADMIN"
+            memberRole === "HQ_ADMIN"
               ? undefined
+              : isBranchAdmin
+              ? session?.user?.branchId || undefined
               : memberBranchId || undefined,
           password: memberPassword,
         }),
@@ -168,15 +184,84 @@ export default function BranchesAndTeamPage() {
     }
   }
 
+  function openEditModal(m: MemberRow) {
+    setEditingMember(m);
+    setEditRole(m.role);
+    setEditBranchId(m.branch?.id || branches[0]?.id || "");
+  }
+
+  async function handleSaveEdit(e: FormEvent) {
+    e.preventDefault();
+    if (!editingMember) return;
+    setSavingEdit(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await fetch("/api/team", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: editingMember.id,
+          role: editRole,
+          branchId:
+            editRole === "HQ_ADMIN"
+              ? null
+              : isBranchAdmin
+              ? undefined
+              : editBranchId || null,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed to update account.");
+      setEditingMember(null);
+      setNotice(`Updated ${editingMember.name}'s role & branch assignment.`);
+      loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Update failed.");
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
   async function handleToggleActive(m: MemberRow) {
+    setError(null);
+    setNotice(null);
     const res = await fetch("/api/team", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId: m.id, isActive: !m.isActive }),
     });
-    if (res.ok) {
-      loadData();
+    const json = await res.json();
+    if (!res.ok) {
+      setError(json.error || "Could not update account status.");
+      return;
     }
+    setNotice(
+      `${m.name} has been ${m.isActive ? "deactivated" : "reactivated"}.`
+    );
+    loadData();
+  }
+
+  async function handleRemoveMember(m: MemberRow) {
+    const confirmed = window.confirm(
+      `Permanently remove ${m.name} (${m.employeeCode || m.email}) from this organization?`
+    );
+    if (!confirmed) return;
+
+    setError(null);
+    setNotice(null);
+    const res = await fetch("/api/team", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: m.id }),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      setError(json.error || "Could not remove account.");
+      return;
+    }
+    setNotice(json.message || "Account removed.");
+    loadData();
   }
 
   if (loading && branches.length === 0 && members.length === 0) {
@@ -197,10 +282,10 @@ export default function BranchesAndTeamPage() {
           </h1>
           <p className="mt-0.5 text-xs text-slate-500">
             {isSuperAdmin
-              ? "Manage district branches and provision HQ Officers, Branch Managers, and Staff"
-              : isBranchManager
-              ? "Provision and manage field/desk employees assigned to your branch"
-              : "Organization branches and staff directory"}
+              ? "Manage branches and provision HQ Admin, Branch Admin, Branch Manager, and Employee accounts"
+              : isBranchAdmin
+              ? "Manage Branch Managers and Employees strictly within your assigned branch"
+              : "Manage Branch Admins, Branch Managers, and Employees across all branches"}
           </p>
         </div>
 
@@ -219,13 +304,13 @@ export default function BranchesAndTeamPage() {
             <button
               type="button"
               onClick={() => {
-                setMemberRole(isBranchManager ? "EMPLOYEE" : "BRANCH_MANAGER");
+                setMemberRole(manageableRoles[0] || "EMPLOYEE");
                 setMemberModalOpen(true);
               }}
               className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#0284C7] px-3.5 text-xs font-semibold text-white hover:bg-[#0369A1]"
             >
               <UserPlus className="h-3.5 w-3.5" />
-              {isBranchManager ? "Add Branch Employee" : "Provision User"}
+              Provision User
             </button>
           )}
         </div>
@@ -274,7 +359,7 @@ export default function BranchesAndTeamPage() {
               </div>
               {b.manager && (
                 <p className="mt-3 border-t border-slate-100 pt-2.5 text-xs text-slate-500">
-                  Manager:{" "}
+                  Lead:{" "}
                   <span className="font-medium text-slate-700">
                     {b.manager.name}
                   </span>
@@ -304,7 +389,7 @@ export default function BranchesAndTeamPage() {
                 <th className="px-4 py-3">Role</th>
                 <th className="px-4 py-3">Branch / District</th>
                 <th className="px-4 py-3">Status</th>
-                {canProvisionStaff && <th className="px-4 py-3 text-right">Action</th>}
+                <th className="px-4 py-3 text-right">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -320,8 +405,15 @@ export default function BranchesAndTeamPage() {
                     {m.employeeCode || "—"}
                   </td>
                   <td className="whitespace-nowrap px-4 py-3">
-                    <span className="rounded-full bg-sky-50 px-2.5 py-0.5 text-[11px] font-medium text-[#0369A1]">
-                      {ROLE_LABELS[m.role]?.shortLabel || m.role}
+                    <span
+                      className={cn(
+                        "rounded-full px-2.5 py-0.5 text-[11px] font-medium",
+                        m.role === "COMPANY_SUPER_ADMIN"
+                          ? "bg-[#0A192F] text-[#38BDF8]"
+                          : "bg-sky-50 text-[#0369A1]"
+                      )}
+                    >
+                      {ROLE_LABELS[m.role]?.label || m.role}
                     </span>
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-slate-600">
@@ -336,23 +428,43 @@ export default function BranchesAndTeamPage() {
                           : "bg-slate-100 text-slate-500"
                       )}
                     >
-                      {m.isActive ? "Active" : "Disabled"}
+                      {m.isActive ? "Active" : "Inactive"}
                     </span>
                   </td>
-                  {canProvisionStaff && (
-                    <td className="whitespace-nowrap px-4 py-3 text-right">
-                      {m.id !== session?.user?.id &&
-                        m.role !== "COMPANY_SUPER_ADMIN" && (
-                          <button
-                            type="button"
-                            onClick={() => handleToggleActive(m)}
-                            className="rounded-md border border-slate-200 px-2.5 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-50"
-                          >
-                            {m.isActive ? "Disable" : "Enable"}
-                          </button>
-                        )}
-                    </td>
-                  )}
+                  <td className="whitespace-nowrap px-4 py-3 text-right">
+                    {m.role === "COMPANY_SUPER_ADMIN" ? (
+                      <span className="text-[11px] font-medium text-slate-400">
+                        Protected
+                      </span>
+                    ) : m.canManage ? (
+                      <div className="inline-flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => openEditModal(m)}
+                          className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
+                        >
+                          <Pencil className="h-3 w-3" />
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleActive(m)}
+                          className="rounded-md border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-50"
+                        >
+                          {m.isActive ? "Deactivate" : "Activate"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveMember(m)}
+                          className="rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700 hover:bg-rose-100"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-[11px] text-slate-400">—</span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -365,7 +477,7 @@ export default function BranchesAndTeamPage() {
         open={branchModalOpen}
         onClose={() => setBranchModalOpen(false)}
         title="Create Branch / District"
-        subtitle="Segment daily operations and manager approvals by location or unit"
+        subtitle="Segment daily operations and approvals by location or unit"
       >
         <form onSubmit={handleCreateBranch} className="space-y-4">
           <div>
@@ -430,8 +542,8 @@ export default function BranchesAndTeamPage() {
       <Modal
         open={memberModalOpen}
         onClose={() => setMemberModalOpen(false)}
-        title={isBranchManager ? "Add Branch Employee" : "Provision Team Account"}
-        subtitle="Users sign in with your Company Code + Employee ID or Email"
+        title="Provision Team Account"
+        subtitle="You can provision roles strictly below your own hierarchy tier"
       >
         <form onSubmit={handleCreateMember} className="space-y-3.5">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -473,7 +585,7 @@ export default function BranchesAndTeamPage() {
                 required
                 value={memberEmail}
                 onChange={(e) => setMemberEmail(e.target.value)}
-                placeholder="karim@shilpalay.com"
+                placeholder="karim@company.com"
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#0284C7]"
               />
             </div>
@@ -491,47 +603,43 @@ export default function BranchesAndTeamPage() {
             </div>
           </div>
 
-          {!isBranchManager && (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-700">
+                Role *
+              </label>
+              <select
+                value={memberRole}
+                onChange={(e) => setMemberRole(e.target.value as CompanyRole)}
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-[#0284C7]"
+              >
+                {manageableRoles.map((r) => (
+                  <option key={r} value={r}>
+                    {ROLE_LABELS[r]?.label || r}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {memberRole !== "HQ_ADMIN" && !isBranchAdmin && (
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-700">
-                  Role *
+                  Assigned Branch *
                 </label>
                 <select
-                  value={memberRole}
-                  onChange={(e) => setMemberRole(e.target.value as CompanyRole)}
+                  required
+                  value={memberBranchId}
+                  onChange={(e) => setMemberBranchId(e.target.value)}
                   className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-[#0284C7]"
                 >
-                  <option value="COMPANY_SUPER_ADMIN">
-                    Co-Admin / Managing Director
-                  </option>
-                  <option value="HQ_ADMIN_OFFICER">HQ Admin Officer</option>
-                  <option value="BRANCH_MANAGER">Branch Manager</option>
-                  <option value="EMPLOYEE">Employee</option>
+                  {branches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name} ({b.code})
+                    </option>
+                  ))}
                 </select>
               </div>
-              {memberRole !== "HQ_ADMIN_OFFICER" &&
-                memberRole !== "COMPANY_SUPER_ADMIN" && (
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-700">
-                    Assigned Branch *
-                  </label>
-                  <select
-                    required
-                    value={memberBranchId}
-                    onChange={(e) => setMemberBranchId(e.target.value)}
-                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-[#0284C7]"
-                  >
-                    {branches.map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {b.name} ({b.code})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-            </div>
-          )}
+            )}
+          </div>
 
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-700">
@@ -566,6 +674,73 @@ export default function BranchesAndTeamPage() {
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* Edit Role / Branch Modal */}
+      <Modal
+        open={Boolean(editingMember)}
+        onClose={() => setEditingMember(null)}
+        title={`Edit ${editingMember?.name || "Account"}`}
+        subtitle="Update subordinate role or branch assignment"
+      >
+        {editingMember && (
+          <form onSubmit={handleSaveEdit} className="space-y-4">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-700">
+                Role
+              </label>
+              <select
+                value={editRole}
+                onChange={(e) => setEditRole(e.target.value as CompanyRole)}
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-[#0284C7]"
+              >
+                {manageableRoles.map((r) => (
+                  <option key={r} value={r}>
+                    {ROLE_LABELS[r]?.label || r}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {editRole !== "HQ_ADMIN" && !isBranchAdmin && (
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-700">
+                  Assigned Branch
+                </label>
+                <select
+                  required
+                  value={editBranchId}
+                  onChange={(e) => setEditBranchId(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-[#0284C7]"
+                >
+                  {branches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name} ({b.code})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setEditingMember(null)}
+                className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-medium text-slate-600"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={savingEdit}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[#0284C7] px-4 py-2 text-xs font-semibold text-white hover:bg-[#0369A1] disabled:opacity-60"
+              >
+                {savingEdit && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                Save Changes
+              </button>
+            </div>
+          </form>
+        )}
       </Modal>
     </div>
   );

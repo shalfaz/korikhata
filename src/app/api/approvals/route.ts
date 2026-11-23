@@ -28,14 +28,17 @@ export async function GET(req: NextRequest) {
       isDeleted: false,
     };
 
-    if (auth.ctx.role === "BRANCH_MANAGER") {
+    if (
+      auth.ctx.role === "BRANCH_MANAGER" ||
+      auth.ctx.role === "BRANCH_ADMIN"
+    ) {
       if (!auth.ctx.branchId) {
         return NextResponse.json({ items: [], pendingCount: 0 });
       }
       filter.branchId = new Types.ObjectId(auth.ctx.branchId);
       filter.approvalStatus = "PENDING_MANAGER";
-    } else if (auth.ctx.role === "HQ_ADMIN_OFFICER") {
-      filter.approvalStatus = "PENDING_HQ";
+    } else if (auth.ctx.role === "HQ_ADMIN") {
+      filter.approvalStatus = { $in: ["PENDING_HQ", "PENDING_FINAL"] };
     } else if (auth.ctx.role === "COMPANY_SUPER_ADMIN") {
       filter.approvalStatus =
         scope === "all_pending"
@@ -46,8 +49,13 @@ export async function GET(req: NextRequest) {
     const myTierCountFilter: Record<string, unknown> = {
       companyId: new Types.ObjectId(auth.ctx.companyId),
       isDeleted: false,
-      approvalStatus: queueStatus,
-      ...(auth.ctx.role === "BRANCH_MANAGER" && auth.ctx.branchId
+      approvalStatus:
+        auth.ctx.role === "HQ_ADMIN"
+          ? { $in: ["PENDING_HQ", "PENDING_FINAL"] }
+          : queueStatus,
+      ...((auth.ctx.role === "BRANCH_MANAGER" ||
+        auth.ctx.role === "BRANCH_ADMIN") &&
+      auth.ctx.branchId
         ? { branchId: new Types.ObjectId(auth.ctx.branchId) }
         : {}),
     };

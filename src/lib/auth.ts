@@ -10,8 +10,23 @@ import {
   Company,
   CompanyRole,
   PlatformRole,
+  ROLE_RANK,
   User,
 } from "@/models";
+
+function normalizeCompanyRole(rawRole: string | undefined): CompanyRole {
+  if (rawRole === "HQ_ADMIN_OFFICER") return "HQ_ADMIN";
+  if (
+    rawRole === "COMPANY_SUPER_ADMIN" ||
+    rawRole === "HQ_ADMIN" ||
+    rawRole === "BRANCH_ADMIN" ||
+    rawRole === "BRANCH_MANAGER" ||
+    rawRole === "EMPLOYEE"
+  ) {
+    return rawRole;
+  }
+  return "EMPLOYEE";
+}
 
 async function hydrateSessionUser(userId: string) {
   await dbConnect();
@@ -73,7 +88,7 @@ async function hydrateSessionUser(userId: string) {
     approvalWorkflow: company.approvalWorkflow,
     branchId: branch ? branch._id.toString() : null,
     branchName: branch ? branch.name : null,
-    role: user.role,
+    role: normalizeCompanyRole(user.role),
   };
 }
 
@@ -382,10 +397,10 @@ export function getInitialApprovalStatus(
   if (role === "COMPANY_SUPER_ADMIN") {
     return "FINAL_APPROVED";
   }
-  if (role === "HQ_ADMIN_OFFICER") {
+  if (role === "HQ_ADMIN") {
     return "PENDING_FINAL";
   }
-  if (role === "BRANCH_MANAGER") {
+  if (role === "BRANCH_ADMIN" || role === "BRANCH_MANAGER") {
     return workflow === "3_STEP" ? "PENDING_HQ" : "PENDING_FINAL";
   }
   // EMPLOYEE
@@ -394,11 +409,13 @@ export function getInitialApprovalStatus(
 }
 
 /**
- * Determines the pending queue status that a given role is responsible for approving.
+ * Determines the primary pending queue status that a given role approves.
  */
 export function getQueueStatusForRole(role: CompanyRole): ApprovalStatus | null {
-  if (role === "BRANCH_MANAGER") return "PENDING_MANAGER";
-  if (role === "HQ_ADMIN_OFFICER") return "PENDING_HQ";
+  if (role === "BRANCH_MANAGER" || role === "BRANCH_ADMIN") {
+    return "PENDING_MANAGER";
+  }
+  if (role === "HQ_ADMIN") return "PENDING_HQ";
   if (role === "COMPANY_SUPER_ADMIN") return "PENDING_FINAL";
   return null;
 }
@@ -411,43 +428,83 @@ export function getNextApprovalStatus(
   approverRole: CompanyRole,
   workflow: ApprovalWorkflow
 ): ApprovalStatus | null {
+  if (approverRole === "COMPANY_SUPER_ADMIN") {
+    return "FINAL_APPROVED";
+  }
+
+  if (approverRole === "HQ_ADMIN") {
+    if (currentStatus === "PENDING_HQ" || currentStatus === "PENDING_FINAL") {
+      return "FINAL_APPROVED";
+    }
+    return null;
+  }
+
   if (
     currentStatus === "PENDING_MANAGER" &&
-    (approverRole === "BRANCH_MANAGER" || approverRole === "COMPANY_SUPER_ADMIN")
+    (approverRole === "BRANCH_MANAGER" || approverRole === "BRANCH_ADMIN")
   ) {
-    if (approverRole === "COMPANY_SUPER_ADMIN") return "FINAL_APPROVED";
     return workflow === "3_STEP" ? "PENDING_HQ" : "PENDING_FINAL";
-  }
-
-  if (
-    currentStatus === "PENDING_HQ" &&
-    (approverRole === "HQ_ADMIN_OFFICER" || approverRole === "COMPANY_SUPER_ADMIN")
-  ) {
-    return approverRole === "COMPANY_SUPER_ADMIN"
-      ? "FINAL_APPROVED"
-      : "PENDING_FINAL";
-  }
-
-  if (
-    currentStatus === "PENDING_FINAL" &&
-    approverRole === "COMPANY_SUPER_ADMIN"
-  ) {
-    return "FINAL_APPROVED";
   }
 
   return null;
 }
 
 export function isHQOrSuperAdmin(role: CompanyRole): boolean {
-  return role === "COMPANY_SUPER_ADMIN" || role === "HQ_ADMIN_OFFICER";
+  return role === "COMPANY_SUPER_ADMIN" || role === "HQ_ADMIN";
+}
+
+export function isBranchScopedApprover(role: CompanyRole): boolean {
+  return role === "BRANCH_ADMIN" || role === "BRANCH_MANAGER";
+}
+
+export function canManageUsers(role: CompanyRole): boolean {
+  return (
+    role === "COMPANY_SUPER_ADMIN" ||
+    role === "HQ_ADMIN" ||
+    role === "BRANCH_ADMIN"
+  );
+}
+
+/**
+ * Returns roles strictly lower in rank than the actor (never COMPANY_SUPER_ADMIN).
+ */
+export function getManageableRoles(actorRole: CompanyRole): CompanyRole[] {
+  if (actorRole === "COMPANY_SUPER_ADMIN") {
+    return ["HQ_ADMIN", "BRANCH_ADMIN", "BRANCH_MANAGER", "EMPLOYEE"];
+  }
+  if (actorRole === "HQ_ADMIN") {
+    return ["BRANCH_ADMIN", "BRANCH_MANAGER", "EMPLOYEE"];
+  }
+  if (actorRole === "BRANCH_ADMIN") {
+    return ["BRANCH_MANAGER", "EMPLOYEE"];
+  }
+  return [];
+}
+
+/**
+ * Enforces cascading hierarchical permissions: actor must outrank target,
+ * target can never be COMPANY_SUPER_ADMIN, and BRANCH_ADMIN is locked to their own branch.
+ */
+export function canManageTargetUser(
+  actorRole: CompanyRole,
+  actorBranchId: string | null,
+  targetRole: CompanyRole,
+  targetBranchId: string | null
+): boolean {
+  if (!canManageUsers(actorRole)) return false;
+  if (targetRole === "COMPANY_SUPER_ADMIN") return false;
+  if (ROLE_RANK[actorRole] <= ROLE_RANK[targetRole]) return false;
+
+  if (actorRole === "BRANCH_ADMIN") {
+    return Boolean(
+      actorBranchId && targetBranchId && actorBranchId === targetBranchId
+    );
+  }
+  return true;
 }
 
 export function canManageDues(role: CompanyRole): boolean {
-  return (
-    role === "COMPANY_SUPER_ADMIN" ||
-    role === "HQ_ADMIN_OFFICER" ||
-    role === "BRANCH_MANAGER"
-  );
+  return role !== "EMPLOYEE";
 }
 
 export function canDeleteTransactions(role: CompanyRole): boolean {

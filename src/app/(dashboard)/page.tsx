@@ -96,7 +96,7 @@ export default function DashboardOverviewPage() {
   const role = session?.user?.role || "EMPLOYEE";
   const isEmployee = role === "EMPLOYEE";
   const isHQOrSuper =
-    role === "COMPANY_SUPER_ADMIN" || role === "HQ_ADMIN_OFFICER";
+    role === "COMPANY_SUPER_ADMIN" || role === "HQ_ADMIN";
 
   const [days, setDays] = useState<7 | 30>(7);
   const [branchId, setBranchId] = useState("ALL");

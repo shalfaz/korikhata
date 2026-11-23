@@ -34,28 +34,34 @@ export const ROLE_LABELS: Record<
   { label: string; shortLabel: string; description: string }
 > = {
   COMPANY_SUPER_ADMIN: {
-    label: "Company Super Admin (MD)",
+    label: "Super Admin",
     shortLabel: "Super Admin",
     description:
-      "Full company governance, create branches & officers, final transaction approval, company-wide P&L",
+      "Single organization owner: full control over all branches, all lower roles, final approvals, and company-wide P&L",
   },
-  HQ_ADMIN_OFFICER: {
-    label: "HQ Admin Officer",
-    shortLabel: "HQ Officer",
+  HQ_ADMIN: {
+    label: "HQ Admin",
+    shortLabel: "HQ Admin",
     description:
-      "Head office checker: verify branch-approved entries, audit receipts, manage contacts & reports",
+      "Organization-wide oversight, final approvals, and can manage Branch Admin, Branch Manager, and Employee accounts",
+  },
+  BRANCH_ADMIN: {
+    label: "Branch Admin",
+    shortLabel: "Branch Admin",
+    description:
+      "Branch-scoped administrator: manages Branch Manager & Employee accounts and approves branch-level transactions",
   },
   BRANCH_MANAGER: {
-    label: "Branch / District Manager",
+    label: "Branch Manager",
     shortLabel: "Branch Manager",
     description:
-      "Manage assigned branch staff, approve or reject branch employee entries, view branch metrics",
+      "Branch-scoped verifier: performs first-level verification/approval of Employee vouchers",
   },
   EMPLOYEE: {
-    label: "Employee / Field Staff",
+    label: "Employee / Staff",
     shortLabel: "Employee",
     description:
-      "Submit daily income & expense entries with receipts and track personal approval status",
+      "Submit daily income & expense vouchers with receipts and track personal approval status",
   },
 };
 

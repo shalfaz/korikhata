@@ -20,7 +20,7 @@ export type { IBranch } from "./Branch";
 
 export { User } from "./User";
 export type { IUser, CompanyRole, PlatformRole, AuthProvider } from "./User";
-export { COMPANY_ROLES, PLATFORM_ROLES, AUTH_PROVIDERS } from "./User";
+export { COMPANY_ROLES, ROLE_RANK, PLATFORM_ROLES, AUTH_PROVIDERS } from "./User";
 
 export { Transaction } from "./Transaction";
 export type {
