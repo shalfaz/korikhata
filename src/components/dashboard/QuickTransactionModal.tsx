@@ -65,7 +65,7 @@ export default function QuickTransactionModal({
   const { data: session } = useSession();
   const role = session?.user?.role || "EMPLOYEE";
   const canPickBranch =
-    role === "COMPANY_SUPER_ADMIN" || role === "HQ_ADMIN_OFFICER";
+    role === "COMPANY_SUPER_ADMIN" || role === "HQ_ADMIN";
   const assignedBranchName = session?.user?.branchName || "Head Office";
 
   const [type, setType] = useState<TransactionType>(defaultType);

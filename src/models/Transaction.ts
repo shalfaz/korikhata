@@ -252,6 +252,16 @@ TransactionSchema.index({ companyId: 1, branchId: 1, isDeleted: 1, approvalStatu
 TransactionSchema.index({ companyId: 1, createdBy: 1, isDeleted: 1, date: -1 });
 TransactionSchema.index({ companyId: 1, isDeleted: 1, type: 1, date: -1 });
 
+// Guard against stale Mongoose model enum cache during Next.js hot-reloads
+if (mongoose.models.Transaction) {
+  const cachedTypePath = mongoose.models.Transaction.schema.path("type") as
+    | { enumValues?: string[] }
+    | undefined;
+  if (!cachedTypePath?.enumValues?.includes("TRANSFER")) {
+    delete mongoose.models.Transaction;
+  }
+}
+
 export const Transaction: Model<ITransaction> =
   mongoose.models.Transaction ||
   mongoose.model<ITransaction>("Transaction", TransactionSchema);

@@ -116,7 +116,11 @@ export async function GET(req: NextRequest) {
     const branchIdParam = searchParams.get("branchId");
 
     let scopedBranchId: Types.ObjectId | null = null;
-    if (auth.ctx.role === "BRANCH_MANAGER" && auth.ctx.branchId) {
+    if (
+      (auth.ctx.role === "BRANCH_MANAGER" ||
+        auth.ctx.role === "BRANCH_ADMIN") &&
+      auth.ctx.branchId
+    ) {
       scopedBranchId = new Types.ObjectId(auth.ctx.branchId);
     } else if (
       isHQOrSuperAdmin(auth.ctx.role) &&
@@ -308,8 +312,13 @@ export async function GET(req: NextRequest) {
         ? Transaction.countDocuments({
             companyId: companyObjectId,
             isDeleted: false,
-            approvalStatus: queueStatus,
-            ...(auth.ctx.role === "BRANCH_MANAGER" && auth.ctx.branchId
+            approvalStatus:
+              auth.ctx.role === "HQ_ADMIN"
+                ? { $in: ["PENDING_HQ", "PENDING_FINAL"] }
+                : queueStatus,
+            ...((auth.ctx.role === "BRANCH_MANAGER" ||
+              auth.ctx.role === "BRANCH_ADMIN") &&
+            auth.ctx.branchId
               ? { branchId: new Types.ObjectId(auth.ctx.branchId) }
               : {}),
           })

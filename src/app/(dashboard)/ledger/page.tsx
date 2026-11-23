@@ -47,7 +47,7 @@ export default function DailyLedgerPage() {
   const role = session?.user?.role || "EMPLOYEE";
   const isEmployee = role === "EMPLOYEE";
   const canEdit =
-    role === "COMPANY_SUPER_ADMIN" || role === "HQ_ADMIN_OFFICER";
+    role === "COMPANY_SUPER_ADMIN" || role === "HQ_ADMIN";
   const canDelete = role === "COMPANY_SUPER_ADMIN";
 
   const [transactions, setTransactions] = useState<LedgerTx[]>([]);
