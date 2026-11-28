@@ -36,6 +36,6 @@
 
 ### 🚀 Local Setup
 ```bash
-git clone [https://github.com/shalfaz/korikhata.git](https://github.com/shalfaz/korikhata.git)
+git clone https://github.com/shalfaz/korikhata.git
 cd korikhata
 npm install
